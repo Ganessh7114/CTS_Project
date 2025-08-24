@@ -51,16 +51,21 @@ class PredictiveMaintenanceEvaluator:
         """
         print(f"Evaluating {task_name}...")
         
+        # Ensure both y_true and y_pred are strings to avoid type mixing
+        y_true_str = y_true.astype(str)
+        y_pred_str = pd.Series(y_pred).astype(str)
+        
         # Basic classification metrics
         report = classification_report(
-            y_true, y_pred, 
+            y_true_str, y_pred_str, 
             target_names=self.class_names,
+            labels=self.class_names,
             output_dict=True,
             zero_division=0
         )
         
         # Confusion matrix
-        cm = confusion_matrix(y_true, y_pred)
+        cm = confusion_matrix(y_true_str, y_pred_str, labels=self.class_names)
         
         # ROC AUC for each class
         roc_auc = {}
@@ -75,7 +80,10 @@ class PredictiveMaintenanceEvaluator:
                     roc_auc[class_name] = np.nan
         
         # Overall accuracy
-        accuracy = report['accuracy']
+        accuracy = report.get('accuracy', 0.0)
+        if accuracy == 0.0:
+            # Calculate accuracy manually if not in report
+            accuracy = (y_true_str.values == y_pred_str.values).mean()
         
         # Per-class metrics
         class_metrics = {}
@@ -482,6 +490,8 @@ class PredictiveMaintenanceEvaluator:
                     serializable_results[task_name][key] = int(value)
                 elif isinstance(value, np.floating):
                     serializable_results[task_name][key] = float(value)
+                elif isinstance(value, pd.Series):
+                    serializable_results[task_name][key] = value.tolist()
                 else:
                     serializable_results[task_name][key] = value
         

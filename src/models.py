@@ -12,10 +12,10 @@ from sklearn.preprocessing import StandardScaler, LabelEncoder
 from sklearn.metrics import classification_report, confusion_matrix, roc_auc_score, precision_recall_curve
 from sklearn.metrics import mean_absolute_error, mean_squared_error, r2_score
 import xgboost as xgb
-import lightgbm as lgb
 from typing import Dict, Any, Tuple, List, Optional
 import joblib
 import warnings
+import os
 
 class PredictiveMaintenanceModels:
     """
@@ -55,12 +55,15 @@ class PredictiveMaintenanceModels:
         if fit:
             self.feature_names = X.columns.tolist()
         
+        # Handle NaN values by filling with 0
+        X_clean = X.fillna(0)
+        
         # Scale features
         if fit:
             self.scalers['features'] = StandardScaler()
-            X_scaled = self.scalers['features'].fit_transform(X)
+            X_scaled = self.scalers['features'].fit_transform(X_clean)
         else:
-            X_scaled = self.scalers['features'].transform(X)
+            X_scaled = self.scalers['features'].transform(X_clean)
         
         # Encode classification labels
         if y_class is not None:
@@ -114,38 +117,38 @@ class PredictiveMaintenanceModels:
         self.class_weights = self.calculate_class_weights(y_encoded)
         print(f"Class weights: {self.class_weights}")
         
-        # Train Logistic Regression
+        # Train Logistic Regression (fast baseline)
         print("Training Logistic Regression...")
         lr = LogisticRegression(
             random_state=self.random_state,
             class_weight='balanced',
-            max_iter=1000
+            max_iter=500  # Reduced for speed
         )
         lr.fit(X_scaled, y_encoded)
         
-        # Calibrate LR
-        lr_calibrated = CalibratedClassifierCV(lr, cv=5, method='isotonic')
+        # Calibrate LR (simplified)
+        lr_calibrated = CalibratedClassifierCV(lr, cv=3, method='isotonic')  # Reduced CV
         lr_calibrated.fit(X_scaled, y_encoded)
         
-        # Train Random Forest
+        # Train Random Forest (simplified)
         print("Training Random Forest...")
         rf = RandomForestClassifier(
-            n_estimators=100,
-            max_depth=10,
-            min_samples_split=10,
-            min_samples_leaf=5,
+            n_estimators=50,  # Reduced from 100
+            max_depth=8,      # Reduced from 10
+            min_samples_split=20,  # Increased for speed
+            min_samples_leaf=10,   # Increased for speed
             class_weight='balanced',
             random_state=self.random_state,
             n_jobs=-1
         )
         rf.fit(X_scaled, y_encoded)
         
-        # Train XGBoost
+        # Train XGBoost (simplified)
         print("Training XGBoost...")
         xgb_model = xgb.XGBClassifier(
-            n_estimators=100,
-            max_depth=6,
-            learning_rate=0.1,
+            n_estimators=50,  # Reduced from 100
+            max_depth=4,      # Reduced from 6
+            learning_rate=0.2,  # Increased for faster convergence
             subsample=0.8,
             colsample_bytree=0.8,
             scale_pos_weight=len(y_encoded[y_encoded == 0]) / len(y_encoded[y_encoded == 1]),
@@ -186,24 +189,24 @@ class PredictiveMaintenanceModels:
         # Prepare data
         X_scaled, _, y_rul = self.prepare_data(X, y_rul=y, fit=True)
         
-        # Train Random Forest Regressor
+        # Train Random Forest Regressor (simplified)
         print("Training Random Forest Regressor...")
         rf_reg = RandomForestRegressor(
-            n_estimators=100,
-            max_depth=10,
-            min_samples_split=10,
-            min_samples_leaf=5,
+            n_estimators=50,  # Reduced from 100
+            max_depth=8,      # Reduced from 10
+            min_samples_split=20,  # Increased for speed
+            min_samples_leaf=10,   # Increased for speed
             random_state=self.random_state,
             n_jobs=-1
         )
         rf_reg.fit(X_scaled, y_rul)
         
-        # Train XGBoost Regressor
+        # Train XGBoost Regressor (simplified)
         print("Training XGBoost Regressor...")
         xgb_reg = xgb.XGBRegressor(
-            n_estimators=100,
-            max_depth=6,
-            learning_rate=0.1,
+            n_estimators=50,  # Reduced from 100
+            max_depth=4,      # Reduced from 6
+            learning_rate=0.2,  # Increased for faster convergence
             subsample=0.8,
             colsample_bytree=0.8,
             random_state=self.random_state,
@@ -273,11 +276,11 @@ class PredictiveMaintenanceModels:
         bucket_weights = self.calculate_class_weights(y_encoded)
         print(f"Bucket class weights: {bucket_weights}")
         
-        # Train XGBoost for bucket classification
+        # Train XGBoost for bucket classification (simplified)
         xgb_bucket = xgb.XGBClassifier(
-            n_estimators=100,
-            max_depth=6,
-            learning_rate=0.1,
+            n_estimators=50,  # Reduced from 100
+            max_depth=4,      # Reduced from 6
+            learning_rate=0.2,  # Increased for faster convergence
             subsample=0.8,
             colsample_bytree=0.8,
             random_state=self.random_state,
@@ -447,6 +450,9 @@ class PredictiveMaintenanceModels:
     
     def save_models(self, filepath: str):
         """Save all models and metadata."""
+        # Ensure directory exists
+        os.makedirs(os.path.dirname(filepath), exist_ok=True)
+        
         model_data = {
             'models': self.models,
             'scalers': self.scalers,
@@ -454,8 +460,13 @@ class PredictiveMaintenanceModels:
             'feature_names': self.feature_names,
             'class_weights': self.class_weights
         }
-        joblib.dump(model_data, filepath)
-        print(f"Models saved to {filepath}")
+        
+        try:
+            joblib.dump(model_data, filepath)
+            print(f"Models saved successfully to {filepath}")
+        except Exception as e:
+            print(f"Error saving models: {e}")
+            raise
     
     def load_models(self, filepath: str):
         """Load models and metadata."""

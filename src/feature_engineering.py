@@ -320,11 +320,15 @@ class DeviceFeaturePipeline(BaseEstimator, TransformerMixin):
         # Apply delta features
         X_delta = self.delta_transformer.transform(X)
         
-        # Combine features
+        # Combine features and keep only numeric columns
         X_combined = pd.concat([
             X_rolling,
             X_delta.drop(columns=['udi', 'timestamp'] + self.features, errors='ignore')
         ], axis=1)
+        
+        # Keep only numeric columns
+        numeric_columns = X_combined.select_dtypes(include=[np.number]).columns
+        X_combined = X_combined[numeric_columns]
         
         return X_combined
     
